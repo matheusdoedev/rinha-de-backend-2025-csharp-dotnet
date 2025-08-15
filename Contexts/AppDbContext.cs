@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 
-namespace AspNetWebApiBoilerplate.Contexts;
+namespace PaymentBroker.Contexts;
 
 public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
