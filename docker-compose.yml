@@ -2,23 +2,24 @@ version: "3"
 
 services:
   db:
-    image: docker.io/postgres:latest
+    container_name: "rinha-db"
+    image: postgres
     restart: always
     environment:
-      - POSTGRES_USER=docker
-      - POSTGRESS_PASSWORD=docker
-      - POSTGRES_DB=docker
+      - "POSTGRES_USER=docker"
+      - "POSTGRES_PASSWORD=docker"
+      - "POSTGRES_DB=docker"
     ports:
       - "5432:5432"
     networks:
       - default
 
   broker:
+    container_name: "rinha-broker"
     image: rabbitmq:management
-    container_name: rabbitmq
     environment:
-      - RABBITMQ_DEFAULT_USER=admin
-      - RABBITMQ_DEFAULT_PASS=admin@123
+      - "RABBITMQ_DEFAULT_USER=admin"
+      - "RABBITMQ_DEFAULT_PASS=admin@123"
     ports:
       - "5672:5672"
       - "15672:15672"
@@ -26,5 +27,5 @@ services:
       - default
 
 networks:
-  defaukt:
+  default:
     driver: bridge
