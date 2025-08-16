@@ -1,5 +1,7 @@
 namespace PaymentBroker.Controllers;
 
+using System.Threading.Tasks;
+
 using Microsoft.AspNetCore.Mvc;
 
 using PaymentBroker.Domains.Payment.dtos;
@@ -13,11 +15,11 @@ public class PaymentController(IPaymentService paymentService)
 
 	[HttpPost]
 	[Route("/payments")]
-	public ReceivePaymentResponseDto PostReceivePayment([FromBody] ReceivePaymentDto receivePaymentDto)
+	public async Task<ReceivePaymentResponseDto> PostReceivePayment([FromBody] ReceivePaymentDto receivePaymentDto)
 	{
 		try
 		{
-			ReceivePaymentResponseDto receivePaymentResponseDto = _paymentService.ReceivePayment(receivePaymentDto);
+			ReceivePaymentResponseDto receivePaymentResponseDto = await _paymentService.ReceivePayment(receivePaymentDto);
 
 			return receivePaymentResponseDto;
 		}

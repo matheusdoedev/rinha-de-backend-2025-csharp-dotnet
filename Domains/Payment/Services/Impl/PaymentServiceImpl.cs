@@ -1,6 +1,6 @@
-using System.Threading.Tasks;
 using PaymentBroker.Domains.Payment.dtos;
 using PaymentBroker.Domains.Payment.Repositories;
+using PaymentBroker.Providers;
 
 namespace PaymentBroker.Domains.Payment.Services;
 
@@ -10,22 +10,13 @@ public class PaymentService(IPaymentRepository paymentRepository) : IPaymentServ
 
 	public async Task<ReceivePaymentResponseDto> ReceivePayment(ReceivePaymentDto receivePaymentDto)
 	{
-		await SavePayment(receivePaymentDto);
+		string paymentId = await SavePayment(receivePaymentDto);
 
-
-
-		// put in processing queue
-
-		// return response
-		ReceivePaymentResponseDto receivePaymentResponseDto = new()
-		{
-			Message = "O pagamento está sendo processado."
-		};
-
-		return receivePaymentResponseDto;
+		await SendPaymentToWaitingQueue(paymentId);
+		return GetResponse();
 	}
 
-	private async Task SavePayment(ReceivePaymentDto receivePaymentDto)
+	private async Task<string> SavePayment(ReceivePaymentDto receivePaymentDto)
 	{
 		Payment payment = new()
 		{
@@ -35,5 +26,26 @@ public class PaymentService(IPaymentRepository paymentRepository) : IPaymentServ
 
 		await _paymentRepository.Add(payment);
 		await _paymentRepository.Save();
+		return payment.Id;
+	}
+
+	private async Task SendPaymentToWaitingQueue(string PaymentId)
+	{
+		SendPaymentToWaitingQueueDto sendPaymentToWaitingQueueDto = new()
+		{
+			PaymentId = PaymentId
+		};
+
+		await BrokerProvider.SendMessage("waiting", sendPaymentToWaitingQueueDto);
+	}
+
+	private ReceivePaymentResponseDto GetResponse()
+	{
+		ReceivePaymentResponseDto receivePaymentResponseDto = new()
+		{
+			Message = "O pagamento está sendo processado."
+		};
+
+		return receivePaymentResponseDto;
 	}
 }
