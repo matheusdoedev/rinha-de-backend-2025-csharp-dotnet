@@ -1,3 +1,6 @@
+start:
+	dotnet run
+
 dev:
 	dotnet watch run
 
@@ -6,3 +9,6 @@ up:
 
 down:
 	docker-compose down --remove-orphans
+
+update:
+	dotnet ef database update
