@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace PaymentBroker.Domains.Payment.dtos;
 
 /*
@@ -9,6 +11,9 @@ namespace PaymentBroker.Domains.Payment.dtos;
 */
 public class ReceivePaymentDto
 {
+	[JsonPropertyName("correlationId")]
 	public string CorrelationId { get; set; } = "";
+
+	[JsonPropertyName("amount")]
 	public float Amount { get; set; } = 0;
 }

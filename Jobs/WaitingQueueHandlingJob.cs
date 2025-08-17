@@ -49,7 +49,7 @@ public class WaitingQueueHandlingJob(ILogger<WaitingQueueHandlingJob> logger, IS
 
 		if (!isPaymentProcessorAvailable) return;
 		_consumer.ReceivedAsync += HandlePayment;
-		await _channel.BasicConsumeAsync(queue: "waiting", autoAck: true, consumer: _consumer);
+		await _channel.BasicConsumeAsync(queue: "waiting", autoAck: false, consumer: _consumer);
 	}
 
 	private async Task<bool> IsPaymentProcessorAvailable()
@@ -58,7 +58,7 @@ public class WaitingQueueHandlingJob(ILogger<WaitingQueueHandlingJob> logger, IS
 		{
 			CheckProcessorHealthResponseDto checkProcessorHealthResponseDto = await _paymentProcessor.CheckProcessorHealth();
 
-			return !checkProcessorHealthResponseDto.Failing && checkProcessorHealthResponseDto.MinResponseTime < 10;
+			return !checkProcessorHealthResponseDto.Failing && checkProcessorHealthResponseDto.MinResponseTime <= ACCEPTABLE_RESPONSE_TIME;
 		}
 		catch
 		{
@@ -78,10 +78,10 @@ public class WaitingQueueHandlingJob(ILogger<WaitingQueueHandlingJob> logger, IS
 
 		SendPaymentToWaitingQueueDto sendPaymentToWaitingQueueDto = BrokerProvider.DeserializeMessage<SendPaymentToWaitingQueueDto>(ea);
 
-		await SendToPaymentProcessor(sendPaymentToWaitingQueueDto);
+		await SendToPaymentProcessor(sendPaymentToWaitingQueueDto, ea);
 	}
 
-	private async Task SendToPaymentProcessor(SendPaymentToWaitingQueueDto sendPaymentToWaitingQueueDto)
+	private async Task SendToPaymentProcessor(SendPaymentToWaitingQueueDto sendPaymentToWaitingQueueDto, dynamic ea)
 	{
 		try
 		{
@@ -110,6 +110,7 @@ public class WaitingQueueHandlingJob(ILogger<WaitingQueueHandlingJob> logger, IS
 			payment.Status = "done";
 			await _paymentProcessingRepository.Add(paymentProcessing);
 			await _paymentRepository.Update(payment);
+			await _channel.BasicAckAsync(deliveryTag: ea.DeliveryTag, multiple: false);
 		}
 		catch (Exception ex)
 		{
@@ -118,10 +119,11 @@ public class WaitingQueueHandlingJob(ILogger<WaitingQueueHandlingJob> logger, IS
 			if (sendPaymentToWaitingQueueDto.Attempts > MAX_ATTEMPTS)
 			{
 				await _paymentService.ResendPaymentToFallbackQueue(sendPaymentToWaitingQueueDto);
+				await _channel.BasicAckAsync(deliveryTag: ea.DeliveryTag, multiple: false);
 			}
 			else
 			{
-				await _paymentService.ResendPaymentToWaitingQueue(sendPaymentToWaitingQueueDto);
+				await _channel.BasicNackAsync(deliveryTag: ea.DeliveryTag, multiple: false, requeue: true);
 			}
 		}
 	}
