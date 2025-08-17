@@ -48,7 +48,7 @@ public class FallbackQueueHandlingJob(ILogger<WaitingQueueHandlingJob> logger, I
 
 		if (!isPaymentProcessorAvailable) return;
 		_consumer.ReceivedAsync += HandlePayment;
-		await _channel.BasicConsumeAsync(queue: "fallback", autoAck: true, consumer: _consumer);
+		await _channel.BasicConsumeAsync(queue: "fallback", autoAck: false, consumer: _consumer);
 	}
 
 	private async Task<bool> IsPaymentProcessorAvailable()
@@ -77,10 +77,10 @@ public class FallbackQueueHandlingJob(ILogger<WaitingQueueHandlingJob> logger, I
 
 		SendPaymentToWaitingQueueDto sendPaymentToWaitingQueueDto = BrokerProvider.DeserializeMessage<SendPaymentToWaitingQueueDto>(ea);
 
-		await SendToPaymentProcessor(sendPaymentToWaitingQueueDto);
+		await SendToPaymentProcessor(sendPaymentToWaitingQueueDto, ea);
 	}
 
-	private async Task SendToPaymentProcessor(SendPaymentToWaitingQueueDto sendPaymentToWaitingQueueDto)
+	private async Task SendToPaymentProcessor(SendPaymentToWaitingQueueDto sendPaymentToWaitingQueueDto, dynamic ea)
 	{
 		try
 		{
@@ -107,12 +107,12 @@ public class FallbackQueueHandlingJob(ILogger<WaitingQueueHandlingJob> logger, I
 			payment.Status = "done";
 			await _paymentProcessingRepository.Add(paymentProcessing);
 			await _paymentRepository.Update(payment);
+			await _channel.BasicAckAsync(deliveryTag: ea.DeliveryTag, multiple: false);
 		}
 		catch (Exception ex)
 		{
 			_logger.LogError(ex.Message, ex);
-			sendPaymentToWaitingQueueDto.Attempts += 1;
-			await _paymentService.ResendPaymentToWaitingQueue(sendPaymentToWaitingQueueDto);
+			await _channel.BasicNackAsync(deliveryTag: ea.DeliveryTag, multiple: false, requeue: true);
 		}
 	}
 }
