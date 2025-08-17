@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 
 using RabbitMQ.Client;
+using RabbitMQ.Client.Events;
 
 public static class BrokerProvider
 {
@@ -13,8 +14,8 @@ public static class BrokerProvider
 	private static readonly string BROKER_PASS = Environment.GetEnvironmentVariable("BROKER_PASS") ?? throw new ArgumentException("broker pass string env not defined");
 	private static readonly string[] QUEUES = ["waiting", "fallback"];
 	private static ConnectionFactory _factory = new();
-	private static IConnection? _connection;
-	private static IChannel? _channel;
+	private static IConnection _connection;
+	private static IChannel _channel;
 
 	public static async Task CreateQueues()
 	{
@@ -31,7 +32,29 @@ public static class BrokerProvider
 	{
 		byte[] body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(message));
 
-		if (_channel == null) return;
 		await _channel.BasicPublishAsync("", queue, body);
+	}
+
+	public static AsyncEventingBasicConsumer CreateConsumer()
+	{
+		return new AsyncEventingBasicConsumer(_channel);
+	}
+
+	public static IChannel GetChannel()
+	{
+		return _channel;
+	}
+
+	public static T DeserializeMessage<T>(dynamic ea)
+	{
+		byte[] body = ea.Body.ToArray();
+		string? message = Encoding.UTF8.GetString(body);
+		T? data = JsonSerializer.Deserialize<T>(message);
+
+		if (data == null)
+		{
+			throw new InvalidOperationException("it was not possible deserialize this message: " + message);
+		}
+		return data;
 	}
 }

@@ -33,6 +33,12 @@ public class PaymentRepository(AppDbContext context) : IPaymentRepository
 
 	public DbSet<Payment> GetDbSet()
 	{
-		throw new NotImplementedException();
+		return _context.Payments;
+	}
+
+	public async Task Update(Payment payment)
+	{
+		_context.Payments.Update(payment);
+		await _context.SaveChangesAsync();
 	}
 }

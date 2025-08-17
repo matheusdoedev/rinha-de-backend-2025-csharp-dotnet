@@ -43,9 +43,19 @@ public class PaymentService(IPaymentRepository paymentRepository) : IPaymentServ
 	{
 		ReceivePaymentResponseDto receivePaymentResponseDto = new()
 		{
-			Message = "O pagamento está sendo processado."
+			Message = "The payment is processing."
 		};
 
 		return receivePaymentResponseDto;
+	}
+
+	public async Task ResendPaymentToWaitingQueue(SendPaymentToWaitingQueueDto sendPaymentToWaitingQueueDto)
+	{
+		await BrokerProvider.SendMessage("waiting", sendPaymentToWaitingQueueDto);
+	}
+
+	public async Task ResendPaymentToFallbackQueue(SendPaymentToWaitingQueueDto sendPaymentToWaitingQueueDto)
+	{
+		await BrokerProvider.SendMessage("fallback", sendPaymentToWaitingQueueDto);
 	}
 }

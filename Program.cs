@@ -6,6 +6,8 @@ using DotEnv.Core;
 using PaymentBroker.Domains.Payment.Services;
 using PaymentBroker.Domains.Payment.Repositories;
 using PaymentBroker.Providers;
+using PaymentBroker.Jobs;
+using PaymentBroker.Domains.Payment.Factories;
 
 new EnvLoader().Load();
 
@@ -27,7 +29,10 @@ builder.Services.AddControllers();
 builder.Services.AddDbContext<AppDbContext>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<IPaymentRepository, PaymentRepository>();
+builder.Services.AddScoped<IPaymentProcessingRepository, PaymentProcessingRepository>();
+builder.Services.AddScoped<IPaymentProcessorFactory, PaymentProcessorFactoryImpl>();
 builder.Services.AddAuthorization();
+builder.Services.AddHostedService<WaitingQueueHandlingJob>();
 
 await BrokerProvider.CreateQueues();
 
