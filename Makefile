@@ -10,5 +10,5 @@ up:
 down:
 	docker-compose down --remove-orphans
 
-update:
+db-update:
 	dotnet ef database update

@@ -100,11 +100,13 @@ public class FallbackQueueHandlingJob(ILogger<WaitingQueueHandlingJob> logger, I
 			ProcessPaymentResponseDto processPaymentResponseDto = await _paymentProcessor.ProcessPayment(processPaymentDto);
 			PaymentProcessing paymentProcessing = new()
 			{
+				Payment = payment,
 				PaymentId = payment.Id,
 				Method = "fallback",
 			};
 
 			payment.Status = "done";
+			payment.UpdatedAt = DateTime.UtcNow;
 			await _paymentProcessingRepository.Add(paymentProcessing);
 			await _paymentRepository.Update(payment);
 			await _channel.BasicAckAsync(deliveryTag: ea.DeliveryTag, multiple: false);

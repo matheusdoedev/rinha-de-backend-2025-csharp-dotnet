@@ -23,8 +23,25 @@ public class PaymentController(IPaymentService paymentService)
 
 			return receivePaymentResponseDto;
 		}
-		catch (System.Exception)
+		catch
 		{
+			throw;
+		}
+	}
+
+	[HttpGet]
+	[Route("/payments-summary")]
+	public async Task<GetPaymentsSummaryResponseDto> GetPaymentsSummary([FromQuery] GetPaymentsSummaryParamsDto getPaymentsSummaryParamsDto)
+	{
+		try
+		{
+			GetPaymentsSummaryResponseDto getPaymentsSummaryResponseDto = await _paymentService.GetPaymentsSummary(getPaymentsSummaryParamsDto);
+
+			return getPaymentsSummaryResponseDto;
+		}
+		catch
+		{
+
 			throw;
 		}
 	}

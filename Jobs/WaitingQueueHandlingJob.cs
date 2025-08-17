@@ -103,11 +103,13 @@ public class WaitingQueueHandlingJob(ILogger<WaitingQueueHandlingJob> logger, IS
 			ProcessPaymentResponseDto processPaymentResponseDto = await _paymentProcessor.ProcessPayment(processPaymentDto);
 			PaymentProcessing paymentProcessing = new()
 			{
+				Payment = payment,
 				PaymentId = payment.Id,
 				Method = "standard",
 			};
 
 			payment.Status = "done";
+			payment.UpdatedAt = DateTime.UtcNow;
 			await _paymentProcessingRepository.Add(paymentProcessing);
 			await _paymentRepository.Update(payment);
 			await _channel.BasicAckAsync(deliveryTag: ea.DeliveryTag, multiple: false);

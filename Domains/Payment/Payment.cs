@@ -11,4 +11,6 @@ public class Payment
 	public string CorrelationId { get; set; } = "";
 	public float Amount { get; set; }
 	public string Status { get; set; } = "pending";
+	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+	public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
