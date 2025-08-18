@@ -33,6 +33,7 @@ builder.Services.AddScoped<IPaymentProcessingRepository, PaymentProcessingReposi
 builder.Services.AddScoped<IPaymentProcessorFactory, PaymentProcessorFactoryImpl>();
 builder.Services.AddAuthorization();
 builder.Services.AddHostedService<WaitingQueueHandlingJob>();
+builder.Services.AddHostedService<FallbackQueueHandlingJob>();
 
 await BrokerProvider.CreateQueues();
 

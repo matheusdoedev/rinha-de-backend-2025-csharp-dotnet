@@ -1,4 +1,9 @@
 bin
 obj
 .env
+.env.production
 .fake
+out
+server.sh
+partial-results.json
+report.html

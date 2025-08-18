@@ -14,13 +14,11 @@ public class PaymentService(IPaymentRepository paymentRepository, IPaymentProces
 
 	public async Task<ReceivePaymentResponseDto> ReceivePayment(ReceivePaymentDto receivePaymentDto)
 	{
-		string paymentId = await SavePayment(receivePaymentDto);
-
-		await SendPaymentToWaitingQueue(paymentId);
+		await SendPaymentToWaitingQueue(receivePaymentDto);
 		return GetResponse();
 	}
 
-	private async Task<string> SavePayment(ReceivePaymentDto receivePaymentDto)
+	public async Task<string> SavePayment(ReceivePaymentDto receivePaymentDto)
 	{
 		Payment payment = new()
 		{
@@ -33,11 +31,13 @@ public class PaymentService(IPaymentRepository paymentRepository, IPaymentProces
 		return payment.Id;
 	}
 
-	private async Task SendPaymentToWaitingQueue(string PaymentId)
+	private async Task SendPaymentToWaitingQueue(ReceivePaymentDto receivePaymentDto)
 	{
 		SendPaymentToWaitingQueueDto sendPaymentToWaitingQueueDto = new()
 		{
-			PaymentId = PaymentId
+			Amount = receivePaymentDto.Amount,
+			Attempts = 0,
+			CorrelationId = receivePaymentDto.CorrelationId
 		};
 
 		await BrokerProvider.SendMessage("waiting", sendPaymentToWaitingQueueDto);

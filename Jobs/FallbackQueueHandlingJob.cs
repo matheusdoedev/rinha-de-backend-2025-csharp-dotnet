@@ -1,5 +1,6 @@
 namespace PaymentBroker.Jobs;
 
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using PaymentBroker.Domains.Payment;
 using PaymentBroker.Domains.Payment.dtos;
@@ -47,7 +48,15 @@ public class FallbackQueueHandlingJob(ILogger<WaitingQueueHandlingJob> logger, I
 		bool isPaymentProcessorAvailable = await IsPaymentProcessorAvailable();
 
 		if (!isPaymentProcessorAvailable) return;
-		_consumer.ReceivedAsync += HandlePayment;
+		_consumer.ReceivedAsync += async (model, ea) =>
+		{
+			Thread thread = new(() =>
+			{
+				HandlePayment(ea).GetAwaiter().GetResult();
+			});
+
+			thread.Start();
+		};
 		await _channel.BasicConsumeAsync(queue: "fallback", autoAck: false, consumer: _consumer);
 	}
 
@@ -65,16 +74,8 @@ public class FallbackQueueHandlingJob(ILogger<WaitingQueueHandlingJob> logger, I
 		}
 	}
 
-	private async Task HandlePayment(object model, dynamic ea)
+	private async Task HandlePayment(dynamic ea)
 	{
-		using IServiceScope scope = serviceScopeFactory.CreateScope();
-		IPaymentProcessorFactory paymentProcessorFactory = scope.ServiceProvider.GetRequiredService<IPaymentProcessorFactory>();
-
-		_paymentRepository = scope.ServiceProvider.GetRequiredService<IPaymentRepository>();
-		_paymentProcessingRepository = scope.ServiceProvider.GetRequiredService<IPaymentProcessingRepository>();
-		_paymentService = scope.ServiceProvider.GetRequiredService<IPaymentService>();
-		_paymentProcessor = paymentProcessorFactory.CreateProcessor("waiting");
-
 		SendPaymentToWaitingQueueDto sendPaymentToWaitingQueueDto = BrokerProvider.DeserializeMessage<SendPaymentToWaitingQueueDto>(ea);
 
 		await SendToPaymentProcessor(sendPaymentToWaitingQueueDto, ea);
@@ -84,13 +85,15 @@ public class FallbackQueueHandlingJob(ILogger<WaitingQueueHandlingJob> logger, I
 	{
 		try
 		{
-			Payment payment = await _paymentRepository.GetById(sendPaymentToWaitingQueueDto.PaymentId);
+			using IServiceScope scope = serviceScopeFactory.CreateScope();
+			IPaymentProcessorFactory paymentProcessorFactory = scope.ServiceProvider.GetRequiredService<IPaymentProcessorFactory>();
 
-			if (payment.Status == "pending" || payment.Status == "done")
-			{
-				return;
-			}
+			_paymentRepository = scope.ServiceProvider.GetRequiredService<IPaymentRepository>();
+			_paymentProcessingRepository = scope.ServiceProvider.GetRequiredService<IPaymentProcessingRepository>();
+			_paymentService = scope.ServiceProvider.GetRequiredService<IPaymentService>();
+			_paymentProcessor = paymentProcessorFactory.CreateProcessor("waiting");
 
+			Payment payment = await _paymentRepository.GetDbSet().Where(p => p.CorrelationId == sendPaymentToWaitingQueueDto.CorrelationId).FirstAsync();
 			ProcessPaymentDto processPaymentDto = new()
 			{
 				Amount = payment.Amount,
@@ -105,16 +108,12 @@ public class FallbackQueueHandlingJob(ILogger<WaitingQueueHandlingJob> logger, I
 				Method = "fallback",
 			};
 
-			payment.Status = "done";
-			payment.UpdatedAt = DateTime.UtcNow;
 			await _paymentProcessingRepository.Add(paymentProcessing);
-			await _paymentRepository.Update(payment);
-			await _channel.BasicAckAsync(deliveryTag: ea.DeliveryTag, multiple: false);
 		}
 		catch (Exception ex)
 		{
 			_logger.LogError(ex.Message, ex);
-			await _channel.BasicNackAsync(deliveryTag: ea.DeliveryTag, multiple: false, requeue: true);
+			await _paymentService.ResendPaymentToFallbackQueue(sendPaymentToWaitingQueueDto);
 		}
 	}
 }

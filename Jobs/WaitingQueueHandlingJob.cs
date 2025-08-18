@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using PaymentBroker.Domains.Payment;
 using PaymentBroker.Domains.Payment.dtos;
@@ -48,8 +49,16 @@ public class WaitingQueueHandlingJob(ILogger<WaitingQueueHandlingJob> logger, IS
 		bool isPaymentProcessorAvailable = await IsPaymentProcessorAvailable();
 
 		if (!isPaymentProcessorAvailable) return;
-		_consumer.ReceivedAsync += HandlePayment;
-		await _channel.BasicConsumeAsync(queue: "waiting", autoAck: false, consumer: _consumer);
+		_consumer.ReceivedAsync += async (model, ea) =>
+		{
+			Thread thread = new(() =>
+			{
+				HandlePayment(ea).GetAwaiter().GetResult();
+			});
+
+			thread.Start();
+		};
+		await _channel.BasicConsumeAsync(queue: "waiting", autoAck: true, consumer: _consumer);
 	}
 
 	private async Task<bool> IsPaymentProcessorAvailable()
@@ -66,33 +75,40 @@ public class WaitingQueueHandlingJob(ILogger<WaitingQueueHandlingJob> logger, IS
 		}
 	}
 
-	private async Task HandlePayment(object model, dynamic ea)
+	private async Task HandlePayment(dynamic ea)
 	{
-		using IServiceScope scope = serviceScopeFactory.CreateScope();
-		IPaymentProcessorFactory paymentProcessorFactory = scope.ServiceProvider.GetRequiredService<IPaymentProcessorFactory>();
-
-		_paymentRepository = scope.ServiceProvider.GetRequiredService<IPaymentRepository>();
-		_paymentProcessingRepository = scope.ServiceProvider.GetRequiredService<IPaymentProcessingRepository>();
-		_paymentService = scope.ServiceProvider.GetRequiredService<IPaymentService>();
-		_paymentProcessor = paymentProcessorFactory.CreateProcessor("waiting");
-
 		SendPaymentToWaitingQueueDto sendPaymentToWaitingQueueDto = BrokerProvider.DeserializeMessage<SendPaymentToWaitingQueueDto>(ea);
 
-		await SendToPaymentProcessor(sendPaymentToWaitingQueueDto, ea);
+		await SendToPaymentProcessor(sendPaymentToWaitingQueueDto);
 	}
 
-	private async Task SendToPaymentProcessor(SendPaymentToWaitingQueueDto sendPaymentToWaitingQueueDto, dynamic ea)
+	private async Task SendToPaymentProcessor(SendPaymentToWaitingQueueDto sendPaymentToWaitingQueueDto)
 	{
 		try
 		{
-			Payment payment = await _paymentRepository.GetById(sendPaymentToWaitingQueueDto.PaymentId);
+			using IServiceScope scope = serviceScopeFactory.CreateScope();
+			IPaymentProcessorFactory paymentProcessorFactory = scope.ServiceProvider.GetRequiredService<IPaymentProcessorFactory>();
 
-			if (payment.Status == "processing" || payment.Status == "done")
+			_paymentRepository = scope.ServiceProvider.GetRequiredService<IPaymentRepository>();
+			_paymentProcessingRepository = scope.ServiceProvider.GetRequiredService<IPaymentProcessingRepository>();
+			_paymentService = scope.ServiceProvider.GetRequiredService<IPaymentService>();
+			_paymentProcessor = paymentProcessorFactory.CreateProcessor("waiting");
+
+			bool exists = await _paymentRepository.GetDbSet().Where(p => p.CorrelationId == sendPaymentToWaitingQueueDto.CorrelationId).AnyAsync();
+
+			if (exists)
 			{
 				return;
 			}
-			payment.Status = "processing";
-			await _paymentRepository.Update(payment);
+
+			Payment payment = new()
+			{
+				CorrelationId = sendPaymentToWaitingQueueDto.CorrelationId,
+				Amount = sendPaymentToWaitingQueueDto.Amount,
+			};
+
+			await _paymentRepository.Add(payment);
+			await _paymentRepository.Save(); ;
 
 			ProcessPaymentDto processPaymentDto = new()
 			{
@@ -108,11 +124,7 @@ public class WaitingQueueHandlingJob(ILogger<WaitingQueueHandlingJob> logger, IS
 				Method = "standard",
 			};
 
-			payment.Status = "done";
-			payment.UpdatedAt = DateTime.UtcNow;
 			await _paymentProcessingRepository.Add(paymentProcessing);
-			await _paymentRepository.Update(payment);
-			await _channel.BasicAckAsync(deliveryTag: ea.DeliveryTag, multiple: false);
 		}
 		catch (Exception ex)
 		{
@@ -121,11 +133,10 @@ public class WaitingQueueHandlingJob(ILogger<WaitingQueueHandlingJob> logger, IS
 			if (sendPaymentToWaitingQueueDto.Attempts > MAX_ATTEMPTS)
 			{
 				await _paymentService.ResendPaymentToFallbackQueue(sendPaymentToWaitingQueueDto);
-				await _channel.BasicAckAsync(deliveryTag: ea.DeliveryTag, multiple: false);
 			}
 			else
 			{
-				await _channel.BasicNackAsync(deliveryTag: ea.DeliveryTag, multiple: false, requeue: true);
+				await _paymentService.ResendPaymentToWaitingQueue(sendPaymentToWaitingQueueDto);
 			}
 		}
 	}
