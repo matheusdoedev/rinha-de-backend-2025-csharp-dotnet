@@ -1,5 +1,3 @@
-version: "3"
-
 x-service-templates:
   rinha-api: &rinha-api
     image: matheusdoe/rinha-backend:latest
@@ -64,44 +62,28 @@ services:
     networks:
       - payment-processor
     depends_on:
-      - rinha-db-1
+      - rinha-db
       - broker
       - payment-processor-1
       - payment-processor-2
-
-  rinha-db-1:
-    container_name: "rinha-db-1"
-    image: postgres
-    restart: always
-    environment:
-      - "POSTGRES_USER=docker"
-      - "POSTGRES_PASSWORD=docker"
-      - "POSTGRES_DB=docker"
-    volumes:
-      - ./init-rinha-db.sql:/docker-entrypoint-initdb.d/init.sql
-      - rinha-db-1:/var/lib/postgresql/data
-    ports:
-      - "16000:5432"
-    networks:
-      - payment-processor
 
   rinha-api-2:
     <<: *rinha-api
     container_name: rinha-api-2
     volumes:
-      - ./.env.production:/App/.env
+      - ./.env:/App/.env
     ports:
       - "8082:8080"
     networks:
       - payment-processor
     depends_on:
-      - rinha-db-2
+      - rinha-db
       - broker
       - payment-processor-1
       - payment-processor-2
 
-  rinha-db-2:
-    container_name: "rinha-db-2"
+  rinha-db:
+    container_name: "rinha-db"
     image: postgres
     restart: always
     environment:
@@ -110,9 +92,9 @@ services:
       - "POSTGRES_DB=docker"
     volumes:
       - ./init-rinha-db.sql:/docker-entrypoint-initdb.d/init.sql
-      - rinha-db-2:/var/lib/postgresql/data
+      - rinha-db:/var/lib/postgresql/data
     ports:
-      - "16001:5432"
+      - "16000:5432"
     networks:
       - payment-processor
 
@@ -186,8 +168,7 @@ networks:
     driver: bridge
 
 volumes:
-  rinha-db-1:
-  rinha-db-2:
+  rinha-db:
   broker:
   postgres-socket-01:
   postgres-socket-02:
