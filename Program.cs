@@ -1,43 +1,58 @@
-using System.Text;
+using PaymentBroker.Contexts;
 
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
-
-using AspNetWebApiBoilerplate.Contexts;
-
-using Npgsql;
-
+using NLog;
 using DotEnv.Core;
+
+using PaymentBroker.Domains.Payment.Services;
+using PaymentBroker.Domains.Payment.Repositories;
+using PaymentBroker.Providers;
+using PaymentBroker.Jobs;
+using PaymentBroker.Domains.Payment.Factories;
 
 new EnvLoader().Load();
 
-string jwtKey = Environment.GetEnvironmentVariable("JWT_KEY") ?? throw new ArgumentException("jwt key env not defined");
 string connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION") ?? throw new ArgumentException("db connection string env not defined");
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+Logger logger = LogManager.LoadConfiguration("nlog.config").GetCurrentClassLogger();
 
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(c =>
+{
+	c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
+	{
+		Title = "Payment Broker",
+		Version = "v1.0.0",
+		Description = "A API that behaves as a middleware between payments APIs. The goal is to intermediate payments."
+	});
+});
 builder.Services.AddControllers();
 builder.Services.AddDbContext<AppDbContext>();
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = false,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = "localhost",
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
-        };
-    });
+builder.Services.AddScoped<IPaymentService, PaymentService>();
+builder.Services.AddScoped<IPaymentRepository, PaymentRepository>();
+builder.Services.AddScoped<IPaymentProcessingRepository, PaymentProcessingRepository>();
+builder.Services.AddScoped<IPaymentProcessorFactory, PaymentProcessorFactoryImpl>();
 builder.Services.AddAuthorization();
+builder.Services.AddHostedService<WaitingQueueHandlingJob>();
+builder.Services.AddHostedService<FallbackQueueHandlingJob>();
 
-WebApplication app = builder.Build();
+await BrokerProvider.CreateQueues();
 
-app.UseSwagger();
-app.UseSwaggerUI();
-app.MapControllers();
+try
+{
+	WebApplication app = builder.Build();
 
-await app.RunAsync();
+	app.UseSwagger();
+	app.UseSwaggerUI();
+	app.MapControllers();
+
+	await app.RunAsync();
+}
+catch (Exception exception)
+{
+	logger.Error(exception, "Application stopped due to an exception");
+	throw;
+}
+finally
+{
+	LogManager.Shutdown();
+}

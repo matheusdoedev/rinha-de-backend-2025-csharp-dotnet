@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 
-namespace AspnetWebApiBoilerplate.Controllers;
+namespace PaymentBroker.Controllers;
 
 [ApiController]
 [Route("")]

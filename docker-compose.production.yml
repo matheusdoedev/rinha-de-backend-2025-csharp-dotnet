@@ -1,6 +1,20 @@
-version: "3"
-
 x-service-templates:
+  rinha-api: &rinha-api
+    image: matheusdoe/rinha-backend:latest
+    networks:
+      - payment-processor
+      - payment-processor-db
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 2s
+        max_attempts: 10
+        window: 5s
+      resources:
+        limits:
+          cpus: "0.15"
+          memory: "42MB"
+
   payment-processor: &payment-processor
     image: zanfranceschi/payment-processor:amd64-20250807222453
     networks:
@@ -38,7 +52,37 @@ x-service-templates:
           memory: "250MB"
 
 services:
-  db:
+  rinha-api-1:
+    <<: *rinha-api
+    container_name: rinha-api-1
+    volumes:
+      - ./.env:/App/.env
+    ports:
+      - "8081:8080"
+    networks:
+      - payment-processor
+    depends_on:
+      - rinha-db
+      - broker
+      - payment-processor-1
+      - payment-processor-2
+
+  rinha-api-2:
+    <<: *rinha-api
+    container_name: rinha-api-2
+    volumes:
+      - ./.env:/App/.env
+    ports:
+      - "8082:8080"
+    networks:
+      - payment-processor
+    depends_on:
+      - rinha-db
+      - broker
+      - payment-processor-1
+      - payment-processor-2
+
+  rinha-db:
     container_name: "rinha-db"
     image: postgres
     restart: always
@@ -46,10 +90,11 @@ services:
       - "POSTGRES_USER=docker"
       - "POSTGRES_PASSWORD=docker"
       - "POSTGRES_DB=docker"
-    ports:
-      - "5432:5432"
     volumes:
       - ./init-rinha-db.sql:/docker-entrypoint-initdb.d/init.sql
+      - rinha-db:/var/lib/postgresql/data
+    ports:
+      - "16000:5432"
     networks:
       - payment-processor
 
@@ -62,6 +107,8 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+    volumes:
+      - broker:/var/run/postgresql
     networks:
       - payment-processor
 
@@ -121,5 +168,7 @@ networks:
     driver: bridge
 
 volumes:
+  rinha-db:
+  broker:
   postgres-socket-01:
   postgres-socket-02:
