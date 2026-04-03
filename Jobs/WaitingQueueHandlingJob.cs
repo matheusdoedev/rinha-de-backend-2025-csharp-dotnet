@@ -49,15 +49,7 @@ public class WaitingQueueHandlingJob(ILogger<WaitingQueueHandlingJob> logger, IS
 		bool isPaymentProcessorAvailable = await IsPaymentProcessorAvailable();
 
 		if (!isPaymentProcessorAvailable) return;
-		_consumer.ReceivedAsync += async (model, ea) =>
-		{
-			Thread thread = new(() =>
-			{
-				HandlePayment(ea).GetAwaiter().GetResult();
-			});
-
-			thread.Start();
-		};
+		_consumer.ReceivedAsync += HandlePayment;
 		await _channel.BasicConsumeAsync(queue: "waiting", autoAck: true, consumer: _consumer);
 	}
 
@@ -75,7 +67,7 @@ public class WaitingQueueHandlingJob(ILogger<WaitingQueueHandlingJob> logger, IS
 		}
 	}
 
-	private async Task HandlePayment(dynamic ea)
+	private async Task HandlePayment(dynamic ea, object model)
 	{
 		SendPaymentToWaitingQueueDto sendPaymentToWaitingQueueDto = BrokerProvider.DeserializeMessage<SendPaymentToWaitingQueueDto>(ea);
 
